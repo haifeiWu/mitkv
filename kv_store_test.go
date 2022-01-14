@@ -12,9 +12,10 @@ func TestInitLSMKvStore(t *testing.T) {
 }
 
 func TestKvStoreSet(t *testing.T) {
+	// TODO some bugs in the code
 	dataDir := "/Users/bytedance/Work/openSource/db/"
 	kvStore := InitLSMKvStore(dataDir, 4, 3)
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 11; i++ {
 		kvStore.Set("key_"+strconv.Itoa(i), "value_"+strconv.Itoa(i))
 	}
 	kvStore.close()

@@ -142,7 +142,6 @@ func (kv LSMKvStore) restoreFromWal(file *os.File) {
 // Set set data to db
 func (kv LSMKvStore) Set(key string, value string) {
 	kv.Lock.Lock()
-	defer kv.Lock.Unlock()
 	cmd := Cmd{
 		Key:     key,
 		Val:     value,
@@ -158,6 +157,7 @@ func (kv LSMKvStore) Set(key string, value string) {
 	kv.WalFile.Write(cmdBytesLenBytes)
 	kv.WalFile.Write(cmdBytes)
 	kv.Index.Put(key, cmd)
+	kv.Lock.Unlock()
 
 	// 当内存表的大小大于写存储阈值，则将内存中的数据刷到磁盘
 	if int64(kv.Index.Size()) > kv.StoreThreshold {
@@ -222,7 +222,6 @@ func (kv LSMKvStore) Get(key string) (value string) {
 
 func (kv LSMKvStore) Del(key string) {
 	kv.Lock.Lock()
-	defer kv.Lock.Unlock()
 	cmd := Cmd{
 		Key:     key,
 		CmdType: DEL,
@@ -237,6 +236,7 @@ func (kv LSMKvStore) Del(key string) {
 	kv.WalFile.Write(cmdBytesLenBytes)
 	kv.WalFile.Write(cmdBytes)
 	kv.Index.Put(key, cmd)
+	kv.Lock.Unlock()
 
 	// 当内存表的大小大于写存储阈值，则将内存中的数据刷到磁盘
 	if int64(kv.Index.Size()) > kv.StoreThreshold {
@@ -247,15 +247,15 @@ func (kv LSMKvStore) Del(key string) {
 
 // switchIndex 将达到存储阈值的内存表暂存，并生成新的wal文件与内存表
 func (kv LSMKvStore) switchIndex() {
-	//kv.Lock.Lock()
-	//defer kv.Lock.Unlock()
+	kv.Lock.Lock()
+	defer kv.Lock.Unlock()
 
 	tempValTree, err := kv.Index.ToJSON()
 	if err != nil {
 		fmt.Errorf("kv.Index.ToJSON() err%v\n", err)
 	}
 	kv.ImmutableIndex.FromJSON(tempValTree)
-	kv.Index = avl.NewWithStringComparator()
+	kv.Index.Clear()
 	kv.WalFile.Close()
 
 	walTmpFilePath := kv.DataDir + "walTmp"
@@ -288,18 +288,24 @@ func (kv LSMKvStore) switchIndex() {
 
 // storeToSstTable 将暂存起来的数据落盘 写入到sstTable中
 func (kv LSMKvStore) storeToSstTable() {
-	//kv.Lock.Lock()
-	//defer kv.Lock.Unlock()
+	kv.Lock.Lock()
+	defer kv.Lock.Unlock()
 
-	nowStr := strconv.FormatInt(time.Now().Unix(), 10)
+	now := time.Now().Unix()
+	nowStr := strconv.FormatInt(now, 10)
 	fileName := strings.Join([]string{nowStr, "table"}, ".")
 	absolutePath := kv.DataDir + fileName
+	logjsonBytes, err := kv.ImmutableIndex.ToJSON()
+	if err != nil {
+		fmt.Errorf("ImmutableIndex ToJSON err %v\n", err)
+	}
+	fmt.Printf("ImmutableIndex %v\n", string(logjsonBytes))
 	sstTable, err := CreateFromIndex(absolutePath, int(kv.PartSize), *kv.ImmutableIndex)
 	if err != nil {
 		fmt.Errorf("CreateFromIndex err %v\n", err)
 	}
-	kv.SstTables.Add(*sstTable)
-	kv.ImmutableIndex = avl.NewWithStringComparator()
+	kv.SstTables.Add(sstTable)
+	kv.ImmutableIndex.Clear()
 
 	walTmpFilePath := kv.DataDir + "walTmp"
 	_, statErr := os.Stat(walTmpFilePath)
