@@ -3,12 +3,18 @@ package mitkv
 import (
 	"strconv"
 	"testing"
+	"time"
 )
 
 func TestInitLSMKvStore(t *testing.T) {
 	dataDir := "/Users/bytedance/Work/openSource/db/"
 	kvStore := InitLSMKvStore(dataDir, 4, 3)
-	kvStore.close()
+	kvStore.Del("key_5")
+	val := kvStore.Get("key_5")
+	if val == "" {
+		t.Log("PASS")
+	}
+	kvStore.Close()
 }
 
 func TestKvStoreSet(t *testing.T) {
@@ -18,34 +24,37 @@ func TestKvStoreSet(t *testing.T) {
 	for i := 0; i < 11; i++ {
 		kvStore.Set("key_"+strconv.Itoa(i), "value_"+strconv.Itoa(i))
 	}
-	kvStore.close()
+	time.Sleep(time.Second * 2)
+	kvStore.Close()
 }
 
 func TestKvStoreGet(t *testing.T) {
 	dataDir := "/Users/bytedance/Work/openSource/db/"
 	kvStore := InitLSMKvStore(dataDir, 4, 3)
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 11; i++ {
 		val := kvStore.Get("key_" + strconv.Itoa(i))
 		t.Log("key", "key_"+strconv.Itoa(i), "val", val)
 	}
-	kvStore.close()
+	kvStore.Close()
 }
 
 func TestKvStoreDel(t *testing.T) {
 	dataDir := "/Users/bytedance/Work/openSource/db/"
 	kvStore := InitLSMKvStore(dataDir, 4, 3)
-	kvStore.Del("key_2")
-	kvStore.Del("key_1")
-	kvStore.close()
+	kvStore.Del("key_7")
+	kvStore.Del("key_6")
+	kvStore.Del("key_5")
+	//kvStore.Del("key_1")
+	kvStore.Close()
 
-	kvStore = InitLSMKvStore(dataDir, 4, 3)
-	for i := 0; i < 10; i++ {
-		val := kvStore.Get("key_" + strconv.Itoa(i))
-		if val == "" || len(val) == 0 {
-			t.Log("key", "key_"+strconv.Itoa(i), "val", "not exist")
-			continue
-		}
-		t.Log("key", "key_"+strconv.Itoa(i), "val", val)
-	}
-	kvStore.close()
+	//kvStore = InitLSMKvStore(dataDir, 4, 3)
+	//for i := 0; i < 10; i++ {
+	//	val := kvStore.Get("key_" + strconv.Itoa(i))
+	//	if val == "" || len(val) == 0 {
+	//		t.Log("key", "key_"+strconv.Itoa(i), "val", "not exist")
+	//		continue
+	//	}
+	//	t.Log("key", "key_"+strconv.Itoa(i), "val", val)
+	//}
+	kvStore.Close()
 }

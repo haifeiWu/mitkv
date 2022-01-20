@@ -29,7 +29,6 @@ type LSMKvStore struct {
 	StoreThreshold int64
 	PartSize       int64
 	WalFile        *os.File
-	WalFileDir     *os.File
 }
 
 func InitLSMKvStore(dataDir string, storeThreshold int64, partSize int64) (lSMKvStore LSMKvStore) {
@@ -75,7 +74,8 @@ func InitLSMKvStore(dataDir string, storeThreshold int64, partSize int64) (lSMKv
 		fileName := file.Name()
 		absolutePath := dataDir + fileName
 
-		//从暂存的WAL中恢复数据，一般是持久化ssTable过程中异常才会留下walTmp
+		//从暂存的WAL中恢复数据，一般是持久化ssTable过程中
+		//异常才会留下walTmp
 		if !file.IsDir() && fileName == "walTmp" {
 			walFile, openErr := os.OpenFile(absolutePath, os.O_RDWR, 0666)
 			if openErr != nil {
@@ -103,6 +103,7 @@ func InitLSMKvStore(dataDir string, storeThreshold int64, partSize int64) (lSMKv
 				fmt.Printf("%v\n", err)
 			}
 			lSMKvStore.restoreFromWal(walFile)
+			lSMKvStore.WalFile = walFile
 		}
 	}
 	lSMKvStore.SstTables.Add(sstTreeMap.Values()...)
@@ -110,7 +111,7 @@ func InitLSMKvStore(dataDir string, storeThreshold int64, partSize int64) (lSMKv
 }
 
 // restoreFromWal 从暂存数据中恢复数据
-func (kv LSMKvStore) restoreFromWal(file *os.File) {
+func (kv *LSMKvStore) restoreFromWal(file *os.File) {
 	fileStat, err := file.Stat()
 	if err != nil {
 		fmt.Errorf("get file stat err %v\n", err)
@@ -140,22 +141,15 @@ func (kv LSMKvStore) restoreFromWal(file *os.File) {
 }
 
 // Set set data to db
-func (kv LSMKvStore) Set(key string, value string) {
+func (kv *LSMKvStore) Set(key string, value string) {
 	kv.Lock.Lock()
 	cmd := Cmd{
 		Key:     key,
 		Val:     value,
 		CmdType: SET,
 	}
-	cmdBytes, err := json.Marshal(cmd)
-	if err != nil {
-		fmt.Errorf("Marshal get cmd err%v\n", err)
-		return
-	}
-	cmdBytesLen := len(cmdBytes)
-	cmdBytesLenBytes := Int32ToBytes(int32(cmdBytesLen))
-	kv.WalFile.Write(cmdBytesLenBytes)
-	kv.WalFile.Write(cmdBytes)
+
+	kv.writeWal(cmd)
 	kv.Index.Put(key, cmd)
 	kv.Lock.Unlock()
 
@@ -166,7 +160,7 @@ func (kv LSMKvStore) Set(key string, value string) {
 	}
 }
 
-func (kv LSMKvStore) Get(key string) (value string) {
+func (kv *LSMKvStore) Get(key string) (value string) {
 	kv.Lock.RLock()
 	defer kv.Lock.RUnlock()
 	// 1 先从内存表中获取数据
@@ -181,8 +175,14 @@ func (kv LSMKvStore) Get(key string) (value string) {
 		if temerr = json.Unmarshal(jsonbyte, res); temerr != nil {
 			fmt.Errorf("err %v\n", temerr)
 		}
-		return res.Val
+
+		if res.CmdType == DEL {
+			return ""
+		} else if res.CmdType == SET {
+			return res.Val
+		}
 	}
+
 	// 2 再从暂存表中获取
 	cmdObj, find = kv.ImmutableIndex.Get(key)
 	if find {
@@ -200,7 +200,14 @@ func (kv LSMKvStore) Get(key string) (value string) {
 	// 3 从sstTable中获取
 	//it := kv.SstTables.Iterator()
 
-	for _, satval := range kv.SstTables.Values() {
+	// sst table 问价是按照文件名字的时间顺序升序存在 SstTables 中
+	// 因此 查询 SstTables 文件的时候应该倒序查询
+	for index := kv.SstTables.Size() - 1; index >= 0; index-- {
+		satval, findList := kv.SstTables.Get(index)
+		if !findList {
+			fmt.Errorf("get sst list err %v\n", findList)
+		}
+
 		sstTable := &SSTTable{}
 		data, ok := (satval).(*SSTTable)
 		if ok {
@@ -216,25 +223,16 @@ func (kv LSMKvStore) Get(key string) (value string) {
 			return cmd.Val
 		}
 	}
-
 	return ""
 }
 
-func (kv LSMKvStore) Del(key string) {
+func (kv *LSMKvStore) Del(key string) {
 	kv.Lock.Lock()
 	cmd := Cmd{
 		Key:     key,
 		CmdType: DEL,
 	}
-	cmdBytes, err := json.Marshal(cmd)
-	if err != nil {
-		fmt.Errorf("Marshal get cmd err%v\n", err)
-		return
-	}
-	cmdBytesLen := len(cmdBytes)
-	cmdBytesLenBytes := Int32ToBytes(int32(cmdBytesLen))
-	kv.WalFile.Write(cmdBytesLenBytes)
-	kv.WalFile.Write(cmdBytes)
+	kv.writeWal(cmd)
 	kv.Index.Put(key, cmd)
 	kv.Lock.Unlock()
 
@@ -246,7 +244,7 @@ func (kv LSMKvStore) Del(key string) {
 }
 
 // switchIndex 将达到存储阈值的内存表暂存，并生成新的wal文件与内存表
-func (kv LSMKvStore) switchIndex() {
+func (kv *LSMKvStore) switchIndex() {
 	kv.Lock.Lock()
 	defer kv.Lock.Unlock()
 
@@ -256,7 +254,6 @@ func (kv LSMKvStore) switchIndex() {
 	}
 	kv.ImmutableIndex.FromJSON(tempValTree)
 	kv.Index.Clear()
-	kv.WalFile.Close()
 
 	walTmpFilePath := kv.DataDir + "walTmp"
 	walFilePath := kv.DataDir + "wal"
@@ -278,20 +275,14 @@ func (kv LSMKvStore) switchIndex() {
 	if err != nil {
 		fmt.Errorf("rename wal file err %v\n", err)
 	}
-
-	walFile, err := os.OpenFile(walFilePath, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0666)
-	if err != nil {
-		fmt.Errorf("open tempFile err %v\n", err)
-	}
-	kv.WalFile = walFile
 }
 
 // storeToSstTable 将暂存起来的数据落盘 写入到sstTable中
-func (kv LSMKvStore) storeToSstTable() {
+func (kv *LSMKvStore) storeToSstTable() {
 	kv.Lock.Lock()
 	defer kv.Lock.Unlock()
 
-	now := time.Now().Unix()
+	now := time.Now().UnixNano() / int64(time.Millisecond)
 	nowStr := strconv.FormatInt(now, 10)
 	fileName := strings.Join([]string{nowStr, "table"}, ".")
 	absolutePath := kv.DataDir + fileName
@@ -313,22 +304,60 @@ func (kv LSMKvStore) storeToSstTable() {
 		fmt.Errorf("check file stat err %v\n", statErr)
 	}
 
-	if !(statErr != nil && os.IsNotExist(statErr)) {
+	if statErr == nil {
 		// 如果文件存在 则删除文件
 		err := os.Remove(walTmpFilePath)
 		if err != nil {
 			fmt.Errorf("delete walTmp file err %v\n", err)
 		}
 	}
+
+	walFilePath := kv.DataDir + "wal"
+	walFile, err := os.OpenFile(walFilePath, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0666)
+	if err != nil {
+		fmt.Errorf("open wal err %v\n", err)
+	}
+	kv.WalFile = walFile
 }
 
-func (kv LSMKvStore) close() {
+func (kv *LSMKvStore) writeWal(cmd Cmd) {
+	fileInfo, err := kv.WalFile.Stat()
+	if err != nil {
+		fmt.Errorf("check wal file stat err %v\n", err)
+		return
+	}
+	fmt.Printf("wal file stat%v\n", fileInfo)
+
+	cmdBytes, err := json.Marshal(cmd)
+	if err != nil {
+		fmt.Errorf("Marshal get cmd err%v\n", err)
+		return
+	}
+	cmdBytesLen := len(cmdBytes)
+	cmdBytesLenBytes := Int32ToBytes(int32(cmdBytesLen))
+	_, errWriteLen := kv.WalFile.Write(cmdBytesLenBytes)
+	if errWriteLen != nil {
+		fmt.Errorf("write data len to wal err %v\n", errWriteLen)
+	}
+	_, errWriteData := kv.WalFile.Write(cmdBytes)
+	if errWriteData != nil {
+		fmt.Errorf("write data to wal err %v\n", errWriteData)
+	}
+
+	// 将数据落盘
+	flushErr := kv.WalFile.Sync()
+	if flushErr != nil {
+		fmt.Errorf("flush file err %v\n", flushErr)
+	}
+}
+
+func (kv *LSMKvStore) Close() {
 	for _, satval := range kv.SstTables.Values() {
 		sstTable := &SSTTable{}
 		data, ok := (satval).(*SSTTable)
 		if ok {
 			sstTable = data
 		}
-		sstTable.close()
+		sstTable.Close()
 	}
 }

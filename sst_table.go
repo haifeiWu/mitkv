@@ -17,7 +17,7 @@ type SSTTable struct {
 }
 
 // initFromIndex 从内存中的avlTree生成ssTable
-func (sst SSTTable) initFromIndex(index avl.Tree) {
+func (sst *SSTTable) initFromIndex(index avl.Tree) {
 	tableFileStat, err := sst.TableFile.Stat()
 	if err != nil {
 		fmt.Errorf("get file stat err :%v\n", err)
@@ -63,7 +63,15 @@ func (sst SSTTable) initFromIndex(index avl.Tree) {
 		fmt.Errorf("josn Marshal err %v\n", err)
 	}
 	sst.MetaInfo.IndexStart = tableFileStat.Size()
-	sst.TableFile.Write(indexBytes)
+	_, sstWriteErr := sst.TableFile.Write(indexBytes)
+	if sstWriteErr != nil {
+		fmt.Errorf("sst table write err%v\n", sstWriteErr)
+	}
+	sstSyncErr := sst.TableFile.Sync()
+	if sstSyncErr != nil {
+		fmt.Errorf("sync sst table file err %v\n", sstSyncErr)
+	}
+
 	sst.MetaInfo.IndexLen = int64(len(indexBytes))
 	fmt.Printf("SparseIndex is %v\n", sst.SparseIndex)
 
@@ -73,12 +81,13 @@ func (sst SSTTable) initFromIndex(index avl.Tree) {
 }
 
 // restoreFromFile 应用突然宕机，在服务重启时，从文件中重新构建sstTable
-func (sst SSTTable) restoreFromFile() {
+func (sst *SSTTable) restoreFromFile() {
 	metaInfo, err := sst.MetaInfo.readFromFile(sst.TableFile)
 	if err != nil {
 		fmt.Errorf("meta readFromFile err %v\n", err)
 		return
 	}
+	// TOOD 多次写ssttable的问题 如何解析
 	fmt.Printf("restoreFromFile start ......\n")
 	indexBytes := make([]byte, int(metaInfo.IndexLen))
 	sst.TableFile.Seek(metaInfo.IndexStart, 0)
@@ -92,7 +101,7 @@ func (sst SSTTable) restoreFromFile() {
 	sst.MetaInfo = metaInfo
 }
 
-func (sst SSTTable) writeDataPart(partData *treemap.Map) {
+func (sst *SSTTable) writeDataPart(partData *treemap.Map) {
 	partDataBytes, err := partData.ToJSON()
 	if err != nil {
 		fmt.Errorf("json Marshal err %v\n", err)
@@ -102,7 +111,17 @@ func (sst SSTTable) writeDataPart(partData *treemap.Map) {
 		fmt.Errorf("get file stat err %v\n", err)
 	}
 	start := filestat.Size()
-	sst.TableFile.Write(partDataBytes)
+
+	_, sstWriteErr := sst.TableFile.Write(partDataBytes)
+	if sstWriteErr != nil {
+		fmt.Errorf("sst table write file err%v\n", sstWriteErr)
+	}
+
+	syncSstErr := sst.TableFile.Sync()
+	if syncSstErr != nil {
+		fmt.Errorf("sync sst table file err %v\n", syncSstErr)
+	}
+
 	// 获取最小的key索引，用来做稀疏索引，
 	k, _ := partData.Min()
 	sst.SparseIndex.Put(k, Position{
@@ -112,13 +131,13 @@ func (sst SSTTable) writeDataPart(partData *treemap.Map) {
 	partData.Clear()
 }
 
-func (sst SSTTable) close() {
+func (sst *SSTTable) Close() {
 	sst.TableFile.Close()
 }
 
 // query 从sstTable中查询数据，查询逻辑是 从内存中查找 -> 从最新的sstTable中查找 -> 从老的sstTable中查找
 // 查询过程是从索引中获取到key对应的最上下限的position，
-func (sst SSTTable) query(key string) (cmd *Cmd, err error) {
+func (sst *SSTTable) query(key string) (cmd *Cmd, err error) {
 	list := sll.New()
 	lastSmallPos := &Position{}
 	fitstBigPos := &Position{}
@@ -154,11 +173,11 @@ func (sst SSTTable) query(key string) (cmd *Cmd, err error) {
 		}
 	}
 
-	if lastSmallPos.Start != 0 && lastSmallPos.Len != 0 {
+	if lastSmallPos.Start >= 0 && lastSmallPos.Len > 0 {
 		list.Add(lastSmallPos)
 	}
 
-	if fitstBigPos.Start != 0 && fitstBigPos.Len != 0 {
+	if fitstBigPos.Start >= 0 && fitstBigPos.Len > 0 {
 		list.Add(fitstBigPos)
 	}
 
@@ -306,7 +325,7 @@ type SSTTableMetaInfo struct {
 	PartSize   int64 // 分段的大小
 }
 
-func (sstMeta SSTTableMetaInfo) writeToFile(file *os.File) {
+func (sstMeta *SSTTableMetaInfo) writeToFile(file *os.File) {
 	// file 是通过append的方式来打开或者创建的文件
 	file.Write(Int64ToBytes(sstMeta.Version))
 	file.Write(Int64ToBytes(sstMeta.DataStart))
@@ -314,9 +333,13 @@ func (sstMeta SSTTableMetaInfo) writeToFile(file *os.File) {
 	file.Write(Int64ToBytes(sstMeta.IndexStart))
 	file.Write(Int64ToBytes(sstMeta.IndexLen))
 	file.Write(Int64ToBytes(sstMeta.PartSize))
+	syncFileErr := file.Sync()
+	if syncFileErr != nil {
+		fmt.Errorf("syncFileErr of write meta file %v\n", syncFileErr)
+	}
 }
 
-func (sstMeta SSTTableMetaInfo) readFromFile(file *os.File) (sstMetaRes SSTTableMetaInfo, err error) {
+func (sstMeta *SSTTableMetaInfo) readFromFile(file *os.File) (sstMetaRes SSTTableMetaInfo, err error) {
 	sstMetaRes = SSTTableMetaInfo{}
 
 	stat, err := file.Stat()
