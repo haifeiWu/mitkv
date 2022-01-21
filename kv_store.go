@@ -94,6 +94,7 @@ func InitLSMKvStore(dataDir string, storeThreshold int64, partSize int64) (lSMKv
 				if createSStErr != nil {
 					fmt.Errorf("ParseInt err %v\n", createSStErr)
 				}
+				// 从小到大的将sstTable存入到排序树中
 				sstTreeMap.Put(time, sst)
 			}
 		} else if !file.IsDir() && strings.HasSuffix(fileName, "wal") {
@@ -202,6 +203,7 @@ func (kv *LSMKvStore) Get(key string) (value string) {
 
 	// sst table 问价是按照文件名字的时间顺序升序存在 SstTables 中
 	// 因此 查询 SstTables 文件的时候应该倒序查询
+	// 查询最新更新的key（最新的key覆盖旧值） 查询到则返回
 	for index := kv.SstTables.Size() - 1; index >= 0; index-- {
 		satval, findList := kv.SstTables.Get(index)
 		if !findList {
@@ -221,6 +223,11 @@ func (kv *LSMKvStore) Get(key string) (value string) {
 
 		if cmd != nil && cmd.Key == key && cmd.CmdType == SET {
 			return cmd.Val
+		}
+
+		// 数据被删除 直接返回空
+		if cmd != nil && cmd.Key == key && cmd.CmdType == DEL {
+			return ""
 		}
 	}
 	return ""

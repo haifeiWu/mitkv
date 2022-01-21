@@ -6,8 +6,10 @@ import (
 	"time"
 )
 
+const dataDir = "/Users/bytedance/Work/openSource/db/"
+
 func TestInitLSMKvStore(t *testing.T) {
-	dataDir := "/Users/bytedance/Work/openSource/db/"
+	//dataDir := "/Users/bytedance/Work/openSource/db/"
 	kvStore := InitLSMKvStore(dataDir, 4, 3)
 	kvStore.Del("key_5")
 	val := kvStore.Get("key_5")
@@ -19,7 +21,6 @@ func TestInitLSMKvStore(t *testing.T) {
 
 func TestKvStoreSet(t *testing.T) {
 	// TODO some bugs in the code
-	dataDir := "/Users/bytedance/Work/openSource/db/"
 	kvStore := InitLSMKvStore(dataDir, 4, 3)
 	for i := 0; i < 11; i++ {
 		kvStore.Set("key_"+strconv.Itoa(i), "value_"+strconv.Itoa(i))
@@ -29,9 +30,8 @@ func TestKvStoreSet(t *testing.T) {
 }
 
 func TestKvStoreGet(t *testing.T) {
-	dataDir := "/Users/bytedance/Work/openSource/db/"
 	kvStore := InitLSMKvStore(dataDir, 4, 3)
-	for i := 0; i < 11; i++ {
+	for i := 0; i < 20; i++ {
 		val := kvStore.Get("key_" + strconv.Itoa(i))
 		t.Log("key", "key_"+strconv.Itoa(i), "val", val)
 	}
@@ -39,22 +39,21 @@ func TestKvStoreGet(t *testing.T) {
 }
 
 func TestKvStoreDel(t *testing.T) {
-	dataDir := "/Users/bytedance/Work/openSource/db/"
-	kvStore := InitLSMKvStore(dataDir, 4, 3)
-	kvStore.Del("key_7")
-	kvStore.Del("key_6")
-	kvStore.Del("key_5")
+	//kvStore := InitLSMKvStore(dataDir, 4, 3)
+	//kvStore.Del("key_7")
+	//kvStore.Del("key_6")
+	//kvStore.Del("key_5")
 	//kvStore.Del("key_1")
-	kvStore.Close()
+	//kvStore.Close()
 
-	//kvStore = InitLSMKvStore(dataDir, 4, 3)
-	//for i := 0; i < 10; i++ {
-	//	val := kvStore.Get("key_" + strconv.Itoa(i))
-	//	if val == "" || len(val) == 0 {
-	//		t.Log("key", "key_"+strconv.Itoa(i), "val", "not exist")
-	//		continue
-	//	}
-	//	t.Log("key", "key_"+strconv.Itoa(i), "val", val)
-	//}
+	kvStore := InitLSMKvStore(dataDir, 4, 3)
+	for i := 0; i < 10; i++ {
+		val := kvStore.Get("key_" + strconv.Itoa(i))
+		if val == "" || len(val) == 0 {
+			t.Log("key", "key_"+strconv.Itoa(i), "val", "not exist")
+			continue
+		}
+		t.Log("key", "key_"+strconv.Itoa(i), "val", val)
+	}
 	kvStore.Close()
 }

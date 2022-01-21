@@ -87,7 +87,7 @@ func (sst *SSTTable) restoreFromFile() {
 		fmt.Errorf("meta readFromFile err %v\n", err)
 		return
 	}
-	// TOOD 多次写ssttable的问题 如何解析
+
 	fmt.Printf("restoreFromFile start ......\n")
 	indexBytes := make([]byte, int(metaInfo.IndexLen))
 	sst.TableFile.Seek(metaInfo.IndexStart, 0)
@@ -143,6 +143,7 @@ func (sst *SSTTable) query(key string) (cmd *Cmd, err error) {
 	fitstBigPos := &Position{}
 
 	// 从索引表中找到最后一个小于key的位置，以及第一个大于key的位置
+	//fmt.Printf("query SparseIndex %v\n", sst.SparseIndex)
 	for _, k := range sst.SparseIndex.Keys() {
 		keyStr := Value2Str(k)
 		if keyStr <= key {
@@ -227,6 +228,7 @@ func (sst *SSTTable) query(key string) (cmd *Cmd, err error) {
 	sst.TableFile.Seek(start, 0)
 	sst.TableFile.Read(dataPartBytes)
 	var pStart int64 = 0
+	var pEnd int64 = 0
 	it := list.Iterator()
 	for it.Next() {
 		innerPos := Position{}
@@ -239,8 +241,10 @@ func (sst *SSTTable) query(key string) (cmd *Cmd, err error) {
 			fmt.Errorf("err %v\n", temerr)
 		}
 
+		// TODO bug is herep
+		pEnd = pStart + innerPos.Len
 		partData := treemap.NewWithStringComparator()
-		if err := partData.FromJSON(dataPartBytes[pStart:int(innerPos.Len)]); err != nil {
+		if err := partData.FromJSON(dataPartBytes[pStart:pEnd]); err != nil {
 			fmt.Errorf("treemap from json err %v", err)
 		}
 		data, findKey := partData.Get(key)
