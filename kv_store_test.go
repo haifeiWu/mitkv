@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-const dataDir = "/Users/bytedance/Work/openSource/db/"
+const dataDir = "./db/"
 
 func TestInitLSMKvStore(t *testing.T) {
 	//dataDir := "/Users/bytedance/Work/openSource/db/"

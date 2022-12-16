@@ -3,10 +3,11 @@ package mitkv
 import (
 	"encoding/json"
 	"fmt"
+	"os"
+
 	sll "github.com/emirpasic/gods/lists/singlylinkedlist"
 	"github.com/emirpasic/gods/maps/treemap"
 	avl "github.com/emirpasic/gods/trees/avltree"
-	"os"
 )
 
 type SSTTable struct {

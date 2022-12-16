@@ -3,15 +3,16 @@ package mitkv
 import (
 	"encoding/json"
 	"fmt"
-	sll "github.com/emirpasic/gods/lists/singlylinkedlist"
-	"github.com/emirpasic/gods/maps/treemap"
-	avl "github.com/emirpasic/gods/trees/avltree"
 	"io/ioutil"
 	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	sll "github.com/emirpasic/gods/lists/singlylinkedlist"
+	"github.com/emirpasic/gods/maps/treemap"
+	avl "github.com/emirpasic/gods/trees/avltree"
 )
 
 type KvStore interface {

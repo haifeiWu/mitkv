@@ -2,10 +2,11 @@ package mitkv
 
 import (
 	"fmt"
-	avl "github.com/emirpasic/gods/trees/avltree"
 	"os"
 	"strconv"
 	"testing"
+
+	avl "github.com/emirpasic/gods/trees/avltree"
 )
 
 func TestWriteFile(t *testing.T) {
