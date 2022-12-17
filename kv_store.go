@@ -3,6 +3,7 @@ package mitkv
 import (
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"io/ioutil"
 	"os"
 	"strconv"
@@ -32,9 +33,8 @@ type LSMKvStore struct {
 	WalFile        *os.File
 }
 
-func InitLSMKvStore(dataDir string, storeThreshold int64, partSize int64) (lSMKvStore LSMKvStore) {
-	// TODO file close 的问题
-	lSMKvStore = LSMKvStore{
+func InitLSMKvStore(dataDir string, storeThreshold int64, partSize int64) (lSMKvStore *LSMKvStore, err error) {
+	lSMKvStore = &LSMKvStore{
 		DataDir:        dataDir,
 		StoreThreshold: storeThreshold,
 		PartSize:       partSize,
@@ -46,7 +46,11 @@ func InitLSMKvStore(dataDir string, storeThreshold int64, partSize int64) (lSMKv
 
 	files, err := ioutil.ReadDir(dataDir)
 	if err != nil {
-		fmt.Printf("%v\n", err)
+		files = make([]fs.FileInfo, 0)
+		err = os.Mkdir(dataDir, os.ModePerm)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	if len(files) == 0 {
@@ -67,7 +71,7 @@ func InitLSMKvStore(dataDir string, storeThreshold int64, partSize int64) (lSMKv
 		}
 		fmt.Printf("fileInfo %v\n", fileInfo)
 		lSMKvStore.WalFile = walFile
-		return lSMKvStore
+		return lSMKvStore, nil
 	}
 
 	sstTreeMap := treemap.NewWithStringComparator()
@@ -109,7 +113,7 @@ func InitLSMKvStore(dataDir string, storeThreshold int64, partSize int64) (lSMKv
 		}
 	}
 	lSMKvStore.SstTables.Add(sstTreeMap.Values()...)
-	return lSMKvStore
+	return lSMKvStore, nil
 }
 
 // restoreFromWal 从暂存数据中恢复数据
@@ -360,12 +364,17 @@ func (kv *LSMKvStore) writeWal(cmd Cmd) {
 }
 
 func (kv *LSMKvStore) Close() {
-	for _, satval := range kv.SstTables.Values() {
+	for _, sstVal := range kv.SstTables.Values() {
 		sstTable := &SSTTable{}
-		data, ok := (satval).(*SSTTable)
+		data, ok := (sstVal).(*SSTTable)
 		if ok {
 			sstTable = data
 		}
+
+		if sstTable == nil {
+			return
+		}
+
 		sstTable.Close()
 	}
 }
