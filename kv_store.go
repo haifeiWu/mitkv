@@ -3,8 +3,6 @@ package mitkv
 import (
 	"encoding/json"
 	"fmt"
-	"io/fs"
-	"io/ioutil"
 	"os"
 	"strconv"
 	"strings"
@@ -16,12 +14,14 @@ import (
 	avl "github.com/emirpasic/gods/trees/avltree"
 )
 
+// KvStore KvStore
 type KvStore interface {
 	Set(key string, value string)
 	Get(key string) (value string)
 	Del(key string)
 }
 
+// LSMKvStore LSMKvStore
 type LSMKvStore struct {
 	Index          *avl.Tree // 内存表
 	ImmutableIndex *avl.Tree // 不可变的内存表
@@ -33,6 +33,7 @@ type LSMKvStore struct {
 	WalFile        *os.File
 }
 
+// InitLSMKvStore InitLSMKvStore
 func InitLSMKvStore(dataDir string, storeThreshold int64, partSize int64) (lSMKvStore *LSMKvStore, err error) {
 	lSMKvStore = &LSMKvStore{
 		DataDir:        dataDir,
@@ -44,9 +45,9 @@ func InitLSMKvStore(dataDir string, storeThreshold int64, partSize int64) (lSMKv
 		Lock:           sync.RWMutex{},
 	}
 
-	files, err := ioutil.ReadDir(dataDir)
+	files, err := os.ReadDir(dataDir)
 	if err != nil {
-		files = make([]fs.FileInfo, 0)
+		files = make([]os.DirEntry, 0)
 		err = os.Mkdir(dataDir, os.ModePerm)
 		if err != nil {
 			return nil, err
@@ -54,7 +55,7 @@ func InitLSMKvStore(dataDir string, storeThreshold int64, partSize int64) (lSMKv
 	}
 
 	if len(files) == 0 {
-		//dataDir + WAL
+		// dataDir + WAL
 		filePath := dataDir + "wal"
 		fileInfo, statErr := os.Stat(filePath)
 		var walFile *os.File
@@ -79,8 +80,8 @@ func InitLSMKvStore(dataDir string, storeThreshold int64, partSize int64) (lSMKv
 		fileName := file.Name()
 		absolutePath := dataDir + fileName
 
-		//从暂存的WAL中恢复数据，一般是持久化ssTable过程中
-		//异常才会留下walTmp
+		// 从暂存的WAL中恢复数据，一般是持久化ssTable过程中
+		// 异常才会留下walTmp
 		if !file.IsDir() && fileName == "walTmp" {
 			walFile, openErr := os.OpenFile(absolutePath, os.O_RDWR, 0666)
 			if openErr != nil {
@@ -89,7 +90,7 @@ func InitLSMKvStore(dataDir string, storeThreshold int64, partSize int64) (lSMKv
 			lSMKvStore.restoreFromWal(walFile)
 		}
 
-		//加载ssTable
+		// 加载ssTable
 		if !file.IsDir() && strings.HasSuffix(fileName, ".table") {
 			// file name format is ${timestamp}.${suffix}
 			fileNameSplit := strings.Split(fileName, ".")
@@ -166,6 +167,7 @@ func (kv *LSMKvStore) Set(key string, value string) {
 	}
 }
 
+// Get get val
 func (kv *LSMKvStore) Get(key string) (value string) {
 	kv.Lock.RLock()
 	defer kv.Lock.RUnlock()
@@ -204,7 +206,7 @@ func (kv *LSMKvStore) Get(key string) (value string) {
 		return res.Val
 	}
 	// 3 从sstTable中获取
-	//it := kv.SstTables.Iterator()
+	// it := kv.SstTables.Iterator()
 
 	// sst table 问价是按照文件名字的时间顺序升序存在 SstTables 中
 	// 因此 查询 SstTables 文件的时候应该倒序查询
@@ -238,6 +240,7 @@ func (kv *LSMKvStore) Get(key string) (value string) {
 	return ""
 }
 
+// Del del val
 func (kv *LSMKvStore) Del(key string) {
 	kv.Lock.Lock()
 	cmd := Cmd{
@@ -363,6 +366,7 @@ func (kv *LSMKvStore) writeWal(cmd Cmd) {
 	}
 }
 
+// Close close file data
 func (kv *LSMKvStore) Close() {
 	for _, sstVal := range kv.SstTables.Values() {
 		sstTable := &SSTTable{}

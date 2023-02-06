@@ -2,62 +2,46 @@ package mitkv
 
 import (
 	"encoding/binary"
-	"encoding/json"
 	"fmt"
-	"math"
 	"strconv"
 )
 
-//Float64ToBytes Float64转byte
-func Float64ToBytes(float float64) []byte {
-	bits := math.Float64bits(float)
-	bytes := make([]byte, 8)
-	binary.LittleEndian.PutUint64(bytes, bits)
-	return bytes
-}
-
-//ByteToFloat64 byte转Float64
-func ByteToFloat64(bytes []byte) float64 {
-	bits := binary.LittleEndian.Uint64(bytes)
-	return math.Float64frombits(bits)
-}
-
-//Int64ToBytes Float64转byte
+// Int64ToBytes Float64转byte
 func Int64ToBytes(bits int64) []byte {
 	bytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(bytes, uint64(bits))
 	return bytes
 }
 
-//BytesToInt64 byte转Float64
+// BytesToInt64 byte转Float64
 func BytesToInt64(bytes []byte) int64 {
 	bits := binary.LittleEndian.Uint64(bytes)
 	return int64(bits)
 }
 
-//Int64ToBytes Float64转byte
+// Int32ToBytes Float64 to byte
 func Int32ToBytes(bits int32) []byte {
 	bytes := make([]byte, 4)
 	binary.LittleEndian.PutUint32(bytes, uint32(bits))
 	return bytes
 }
 
-//BytesToInt32 byte转Float64
+// BytesToInt32 byte转Float64
 func BytesToInt32(bytes []byte) int32 {
 	bits := binary.LittleEndian.Uint32(bytes)
 	return int32(bits)
 }
 
+// Value2Str interface val to str
 func Value2Str(v interface{}) string {
 	switch tv := v.(type) {
 	case nil:
 		return ""
 	case bool:
-		if tv == true {
+		if tv {
 			return "true"
-		} else {
-			return "false"
 		}
+		return "false"
 	case string:
 		return tv
 	case []byte:
@@ -87,16 +71,4 @@ func Value2Str(v interface{}) string {
 	default:
 		return fmt.Sprint(v)
 	}
-}
-
-func Interface2Struct(inf interface{}) (target interface{}, err error) {
-	jsonbyte, err := json.Marshal(inf)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := json.Unmarshal(jsonbyte, &target); err != nil {
-		return nil, err
-	}
-	return target, nil
 }

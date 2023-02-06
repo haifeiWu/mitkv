@@ -27,10 +27,10 @@ func TestWriteFile(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer file.Close()
+	defer file.Close() //nolint:errcheck
 	// 写字节到文件中
 	versionByte := Int64ToBytes(sstMeta.Version)
-	//byteSlice := []byte("Bytes!\n")
+	// byteSlice := []byte("Bytes!\n")
 	bytesWritten, err := file.Write(versionByte)
 	if err != nil {
 		t.Fatal(err)
@@ -136,7 +136,7 @@ func TestReadFile(t *testing.T) {
 	t.Log(sstMeta.IndexLen)
 	t.Log(bytesRead)
 
-	file.Seek(40, 0)
+	file.Seek(40, 0) //nolint:errcheck
 	byteSlice = make([]byte, 8)
 	bytesRead, err = file.Read(byteSlice)
 	if err != nil {
@@ -172,11 +172,11 @@ func TestCreateFromIndex(t *testing.T) {
 		indexTree.Put(cmd.Key, cmd)
 	}
 
-	CreateFromIndex("test.txt", 3, *indexTree)
+	CreateFromIndex("test.txt", 3, *indexTree) //nolint:errcheck
 }
 
 func TestCreateFromFile(t *testing.T) {
-	CreateFromFile("test.txt")
+	CreateFromFile("test.txt") //nolint:errcheck
 }
 
 func TestQuery(t *testing.T) {

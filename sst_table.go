@@ -10,6 +10,7 @@ import (
 	avl "github.com/emirpasic/gods/trees/avltree"
 )
 
+// SSTTable ssttable
 type SSTTable struct {
 	MetaInfo    SSTTableMetaInfo
 	SparseIndex *avl.Tree
@@ -132,6 +133,7 @@ func (sst *SSTTable) writeDataPart(partData *treemap.Map) {
 	partData.Clear()
 }
 
+// Close close data
 func (sst *SSTTable) Close() {
 	sst.TableFile.Close()
 }
@@ -144,7 +146,7 @@ func (sst *SSTTable) query(key string) (cmd *Cmd, err error) {
 	fitstBigPos := &Position{}
 
 	// 从索引表中找到最后一个小于key的位置，以及第一个大于key的位置
-	//fmt.Printf("query SparseIndex %v\n", sst.SparseIndex)
+	// fmt.Printf("query SparseIndex %v\n", sst.SparseIndex)
 	for _, k := range sst.SparseIndex.Keys() {
 		keyStr := Value2Str(k)
 		if keyStr <= key {
@@ -191,10 +193,10 @@ func (sst *SSTTable) query(key string) (cmd *Cmd, err error) {
 	lastKeyPos := &Position{}
 	temFirstPos, isFind := list.Get(0)
 	if isFind {
-		//pos, ok := temFirstPos.(Position)
-		//if ok {
+		// pos, ok := temFirstPos.(Position)
+		// if ok {
 		//	fitstKeyPos = &pos
-		//}
+		// }
 		jsonbyte, temerr := json.Marshal(temFirstPos)
 		if temerr != nil {
 			fmt.Errorf("err %v\n", temerr)
@@ -217,7 +219,7 @@ func (sst *SSTTable) query(key string) (cmd *Cmd, err error) {
 		}
 	}
 
-	var length int64 = 0
+	length := int64(0)
 	start := fitstKeyPos.Start
 	if fitstKeyPos.Start == lastKeyPos.Start && fitstKeyPos.Len == lastKeyPos.Len {
 		length = fitstKeyPos.Len
@@ -226,8 +228,8 @@ func (sst *SSTTable) query(key string) (cmd *Cmd, err error) {
 	}
 
 	dataPartBytes := make([]byte, int(length))
-	sst.TableFile.Seek(start, 0)
-	sst.TableFile.Read(dataPartBytes)
+	checkErrFunc(sst.TableFile.Seek(start, 0))
+	checkErrFunc(sst.TableFile.Read(dataPartBytes))
 	var pStart int64 = 0
 	var pEnd int64 = 0
 	it := list.Iterator()
@@ -268,6 +270,7 @@ func (sst *SSTTable) query(key string) (cmd *Cmd, err error) {
 	return nil, err
 }
 
+// InitSstTable init
 func InitSstTable(filePath string, partSize int) (sst *SSTTable, err error) {
 	sst = &SSTTable{}
 	sst.MetaInfo = SSTTableMetaInfo{}
@@ -302,6 +305,7 @@ func InitSstTable(filePath string, partSize int) (sst *SSTTable, err error) {
 	return sst, err
 }
 
+// CreateFromIndex create
 func CreateFromIndex(filePath string, partSize int, index avl.Tree) (sst *SSTTable, err error) {
 	sst, err = InitSstTable(filePath, partSize)
 	if err != nil {
@@ -311,6 +315,7 @@ func CreateFromIndex(filePath string, partSize int, index avl.Tree) (sst *SSTTab
 	return sst, err
 }
 
+// CreateFromFile create
 func CreateFromFile(filePath string) (sst *SSTTable, err error) {
 	sst, err = InitSstTable(filePath, 0)
 	if err != nil {
@@ -323,7 +328,7 @@ func CreateFromFile(filePath string) (sst *SSTTable, err error) {
 // SSTTableMetaInfo sstTable的元数据
 type SSTTableMetaInfo struct {
 	Version    int64 // 版本号
-	DataStart  int64 //数据区开始
+	DataStart  int64 // 数据区开始
 	DataLen    int64 // 数据区长度
 	IndexStart int64 // 索引区开始
 	IndexLen   int64 // 索引区长度
@@ -332,15 +337,21 @@ type SSTTableMetaInfo struct {
 
 func (sstMeta *SSTTableMetaInfo) writeToFile(file *os.File) {
 	// file 是通过append的方式来打开或者创建的文件
-	file.Write(Int64ToBytes(sstMeta.Version))
-	file.Write(Int64ToBytes(sstMeta.DataStart))
-	file.Write(Int64ToBytes(sstMeta.DataLen))
-	file.Write(Int64ToBytes(sstMeta.IndexStart))
-	file.Write(Int64ToBytes(sstMeta.IndexLen))
-	file.Write(Int64ToBytes(sstMeta.PartSize))
+	checkErrFunc(file.Write(Int64ToBytes(sstMeta.Version)))
+	checkErrFunc(file.Write(Int64ToBytes(sstMeta.DataStart)))
+	checkErrFunc(file.Write(Int64ToBytes(sstMeta.DataLen)))
+	checkErrFunc(file.Write(Int64ToBytes(sstMeta.IndexStart)))
+	checkErrFunc(file.Write(Int64ToBytes(sstMeta.IndexLen)))
+	checkErrFunc(file.Write(Int64ToBytes(sstMeta.PartSize)))
 	syncFileErr := file.Sync()
 	if syncFileErr != nil {
 		fmt.Errorf("syncFileErr of write meta file %v\n", syncFileErr)
+	}
+}
+
+func checkErrFunc(index interface{}, err error) {
+	if err != nil {
+		fmt.Errorf("write file err,index=%v,err=%v\n", index, err)
 	}
 }
 
@@ -353,51 +364,56 @@ func (sstMeta *SSTTableMetaInfo) readFromFile(file *os.File) (sstMetaRes SSTTabl
 		return sstMetaRes, err
 	}
 
-	file.Seek(stat.Size()-8, 0)
+	checkErrFunc(file.Seek(stat.Size()-8, 0))
 	byteSlice := make([]byte, 8)
-	_, err = file.Read(byteSlice)
+	checkErrFunc(file.Read(byteSlice))
 	sstMetaRes.PartSize = BytesToInt64(byteSlice)
 
-	file.Seek(stat.Size()-16, 0)
+	checkErrFunc(file.Seek(stat.Size()-16, 0))
 	byteSlice = make([]byte, 8)
-	_, err = file.Read(byteSlice)
+	checkErrFunc(file.Read(byteSlice))
 	sstMetaRes.IndexLen = BytesToInt64(byteSlice)
 
-	file.Seek(stat.Size()-24, 0)
+	checkErrFunc(file.Seek(stat.Size()-24, 0))
 	byteSlice = make([]byte, 8)
-	_, err = file.Read(byteSlice)
+	checkErrFunc(file.Read(byteSlice))
 	sstMetaRes.IndexStart = BytesToInt64(byteSlice)
 
-	file.Seek(stat.Size()-32, 0)
+	checkErrFunc(file.Seek(stat.Size()-32, 0))
 	byteSlice = make([]byte, 8)
-	_, err = file.Read(byteSlice)
+	checkErrFunc(file.Read(byteSlice))
 	sstMetaRes.DataLen = BytesToInt64(byteSlice)
 
-	file.Seek(stat.Size()-40, 0)
+	checkErrFunc(file.Seek(stat.Size()-40, 0))
 	byteSlice = make([]byte, 8)
-	_, err = file.Read(byteSlice)
+	checkErrFunc(file.Read(byteSlice))
 	sstMetaRes.DataStart = BytesToInt64(byteSlice)
 
-	file.Seek(stat.Size()-48, 0)
+	checkErrFunc(file.Seek(stat.Size()-48, 0))
 	byteSlice = make([]byte, 8)
-	_, err = file.Read(byteSlice)
+	checkErrFunc(file.Read(byteSlice))
 	sstMetaRes.Version = BytesToInt64(byteSlice)
 
-	return sstMetaRes, err
+	return sstMetaRes, nil
 }
 
 const (
-	SET = iota
+	// SET set cmd
+	SET int = iota
+	// GET get cmd
 	GET
+	// DEL cmd
 	DEL
 )
 
+// Cmd cmd
 type Cmd struct {
 	Key     string
 	Val     string
 	CmdType int
 }
 
+// Position position
 type Position struct {
 	Start int64
 	Len   int64
